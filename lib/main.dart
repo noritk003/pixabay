@@ -28,13 +28,46 @@ class PixabayPage extends StatefulWidget {
 }
 
 class _PixabayPageState extends State<PixabayPage> {
-  List hits = [];
+  List<PixabayImage> pixabayImages = [];
 
+  // WebAPIより画像を取得する
   Future<void> fetchImages(String text) async {
-    Response response = await Dio().get(
-        'https://pixabay.com/api/?key=32997241-28565409276cfb4522923cfcb&q=$text&image_type=photo&pretty=true&per_page=100');
-    hits = response.data['hits'];
+    final Response response = await Dio().get(
+      'https://pixabay.com/api',
+      queryParameters: {
+        'key': '32997241-28565409276cfb4522923cfcb',
+        'q': text,
+        'image_type': 'photo',
+        'per_page': 100,
+      },
+    );
+    final List hits = response.data['hits'];
+    pixabayImages = hits.map(
+      (e) {
+        return PixabayImage.fromMap(e);
+      },
+    ).toList();
     setState(() {});
+  }
+
+  // 画像をシェアする
+  Future<void> shareImage(String url) async {
+    // URLから画像をダウンロード
+    final Response response = await Dio().get(url,
+        options: Options(
+          responseType: ResponseType.bytes,
+        ));
+
+    // ダウンロードしたデータをファイルに保存
+    final Directory dir = await getTemporaryDirectory();
+    final File file = await File(dir.path + '/image.png').create();
+    await file.writeAsBytes(response.data);
+
+    // Shareパッケージを呼び出して共有
+    final files = <XFile>[];
+    var xfile = XFile(file.path);
+    files.add(xfile);
+    await Share.shareXFiles(files, text: '私の画像です');
   }
 
   @override
@@ -59,34 +92,18 @@ class _PixabayPageState extends State<PixabayPage> {
       body: GridView.builder(
         gridDelegate:
             const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3),
-        itemCount: hits.length,
+        itemCount: pixabayImages.length,
         itemBuilder: (context, index) {
-          Map<String, dynamic> hit = hits[index];
+          final pixabayImage = pixabayImages[index];
           return InkWell(
             onTap: () async {
-              // URLから画像をダウンロード
-              Response response = await Dio().get(hit['webformatURL'],
-                  options: Options(
-                    responseType: ResponseType.bytes,
-                  ));
-
-              // ダウンロードしたデータをファイルに保存
-              final dir = await getTemporaryDirectory();
-              final file = await File(dir.path + '/image.png').create();
-              await file.writeAsBytes(response.data);
-
-              // Shareパッケージを呼び出して共有
-              final files = <XFile>[];
-              var xfile = XFile(file.path);
-              files.add(xfile);
-              await Share.shareXFiles(files, text: '私の画像です');
-              // await Share.shareXFiles([file.path]);
+              shareImage(pixabayImage.webformatURL);
             },
             child: Stack(
               fit: StackFit.expand,
               children: [
                 Image.network(
-                  hit['previewURL'],
+                  pixabayImage.previewURL,
                   fit: BoxFit.cover,
                 ),
                 Align(
@@ -100,7 +117,7 @@ class _PixabayPageState extends State<PixabayPage> {
                           Icons.thumb_up_alt_outlined,
                           size: 14,
                         ),
-                        Text('${hit['likes']}'),
+                        Text('${pixabayImage.likes}'),
                       ],
                     ),
                   ),
@@ -110,6 +127,25 @@ class _PixabayPageState extends State<PixabayPage> {
           );
         },
       ),
+    );
+  }
+}
+
+class PixabayImage {
+  final String webformatURL;
+  final String previewURL;
+  final int likes;
+
+  PixabayImage(
+      {required this.webformatURL,
+      required this.previewURL,
+      required this.likes});
+
+  factory PixabayImage.fromMap(Map<String, dynamic> map) {
+    return PixabayImage(
+      webformatURL: map['webformatURL'],
+      previewURL: map['previewURL'],
+      likes: map['likes'],
     );
   }
 }
